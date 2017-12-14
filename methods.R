@@ -292,7 +292,8 @@ pred.mat["x2","x1"]=1
 
 source("smc_tve") #you will need to use the appropriate file path here
 mi_tve_smc=smcfcs.tve(originaldata=data.with.missingness,smformula.timefixed="Surv(t, d) ~ x1+x2",
-              method=method,predictorMatrix = pred.mat,m=10,numit=10,rjlimit=5000,noisy=F)
+              method=method,tvar=c("x1","x2"), tvarfunc=NULL,
+             spline=T,knots=NULL,nknots=5,predictorMatrix = pred.mat,m=10,numit=10,rjlimit=5000,noisy=F,quick=F)
 
 #---
 #perform Cox regression with TVEs for x and x2, using the imputed data sets
