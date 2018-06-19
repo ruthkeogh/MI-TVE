@@ -1,0 +1,249 @@
+#Use the Rotterdam breat cancer data set, available from https://www.imbi.uni-freiburg.de/Royston-Sauerbrei-book/index.html#datasets
+
+#packages and load data
+
+```{r}
+library(rms)
+library(survival)
+library(smcfcs)
+library(mice)
+library(timereg)
+
+mydata=rotterdam_br_ca
+
+#rename variables
+mydata$t=mydata$"_t"
+mydata$d=mydata$"_d"
+
+#VARIABLES TO BE USED
+#age, sized2, grade, enodes_sq, hormon, chemo, sized1, log(pgr+1)
+
+n=dim(mydata)[1]
+
+#transformed variables
+mydata$enodessq=mydata$enodes^2
+mydata$logpgr=log(mydata$pgr+1)
+
+#split data on event time
+range(mydata$t[mydata$d==1])
+cut.points=seq(0,15,0.5)
+mydata.split=survSplit(Surv(t,d)~.,mydata,cut=cut.points)
+mydata.split=mydata.split[mydata.split$t>mydata.split$tstart,]
+
+```
+
+#-------------------------------------------
+#-------------------------------------------
+#generate spline functions for TVEs
+#-------------------------------------------
+#-------------------------------------------
+
+```{r}
+knots.5=quantile(mydata$t[mydata$d==1],probs=c(0.05,0.25,0.5,0.75,0.95))
+knots.4=quantile(mydata$t[mydata$d==1],probs=c(0.05,0.33,0.66,0.95))
+knots.3=quantile(mydata$t[mydata$d==1],probs=c(0.10,0.5,0.90))
+
+#in complete-data
+
+knots.5.eval=rcspline.eval(mydata.split$t,knots=knots.5)
+knots.4.eval=rcspline.eval(mydata.split$t,knots=knots.4)
+knots.3.eval=rcspline.eval(mydata.split$t,knots=knots.3)
+
+mydata.split$t.k5.1=knots.5.eval[,1]
+mydata.split$t.k5.2=knots.5.eval[,2]
+mydata.split$t.k5.3=knots.5.eval[,3]
+
+mydata.split$t.k4.1=knots.4.eval[,1]
+mydata.split$t.k4.2=knots.4.eval[,2]
+
+mydata.split$t.k3=knots.3.eval[,1]
+
+```
+
+#------------------
+#model without TVEs
+#------------------
+
+
+```{r}
+variable.list=c("age","sized1","sized2","grade","enodessq","hormon","chemo","logpgr")
+
+#model without TVEs
+formula=as.formula(paste0("Surv(t,d)~",paste0(variable.list,collapse="+")))
+compdata.NTVE=coxph(formula,data=mydata)
+
+formula.tve=as.formula(paste0("Surv(tstart,t,d)~",paste0(variable.list,collapse="+")))
+compdata.split.NTVE=coxph(formula.tve,data=mydata.split) #identical results to above of course
+
+```
+
+#------------------
+#model with k5-spline for all variables
+#------------------
+
+
+```{r}
+variable.list=c("age","sized1","sized2","grade","enodessq","hormon","chemo","logpgr")
+varlist.t=paste0(variable.list,":t")
+varlist.k5.1=paste0(variable.list,":t.k5.1")
+varlist.k5.2=paste0(variable.list,":t.k5.2")
+varlist.k5.3=paste0(variable.list,":t.k5.3")
+
+
+formula.full=as.formula(paste0("Surv(tstart,t,d)~",paste0(variable.list,collapse="+"),"+",paste0(varlist.t,collapse="+"),"+",paste0(varlist.k5.1,collapse="+"),
+                               "+",paste0(varlist.k5.2,collapse="+"),"+",paste0(varlist.k5.3,collapse="+")))
+fullmod.compdata=coxph(formula.full,data=mydata.split)
+
+age.varlist=c("age","age:t","age:t.k5.1","age:t.k5.2","age:t.k5.3")
+sized1.varlist=c("sized1","sized1:t","sized1:t.k5.1","sized1:t.k5.2","sized1:t.k5.3")
+sized2.varlist=c("sized2","sized2:t","sized2:t.k5.1","sized2:t.k5.2","sized2:t.k5.3")
+grade.varlist=c("grade","grade:t","grade:t.k5.1","grade:t.k5.2","grade:t.k5.3")
+enodessq.varlist=c("enodessq","enodessq:t","enodessq:t.k5.1","enodessq:t.k5.2","enodessq:t.k5.3")
+hormon.varlist=c("hormon","hormon:t","hormon:t.k5.1","hormon:t.k5.2","hormon:t.k5.3")
+chemo.varlist=c("chemo","chemo:t","chemo:t.k5.1","chemo:t.k5.2","chemo:t.k5.3")
+logpgr.varlist=c("logpgr","logpgr:t","logpgr:t.k5.1","logpgr:t.k5.2","logpgr:t.k5.3")
+
+varlist.full=c(variable.list,varlist.t,varlist.k5.1,varlist.k5.2,varlist.k5.3)
+colnames(fullmod.compdata$var)=varlist.full
+rownames(fullmod.compdata$var)=varlist.full
+
+wald.test(coef=fullmod.compdata$coefficients[age.varlist[2:5]],Sigma=fullmod.compdata$var[age.varlist[2:5],age.varlist[2:5]])
+wald.test(coef=fullmod.compdata$coefficients[sized1.varlist[2:5]],Sigma=fullmod.compdata$var[sized1.varlist[2:5],sized1.varlist[2:5]])
+wald.test(coef=fullmod.compdata$coefficients[sized2.varlist[2:5]],Sigma=fullmod.compdata$var[sized2.varlist[2:5],sized2.varlist[2:5]])
+wald.test(coef=fullmod.compdata$coefficients[grade.varlist[2:5]],Sigma=fullmod.compdata$var[grade.varlist[2:5],grade.varlist[2:5]])
+wald.test(coef=fullmod.compdata$coefficients[enodessq.varlist[2:5]],Sigma=fullmod.compdata$var[enodessq.varlist[2:5],enodessq.varlist[2:5]])
+wald.test(coef=fullmod.compdata$coefficients[hormon.varlist[2:5]],Sigma=fullmod.compdata$var[hormon.varlist[2:5],hormon.varlist[2:5]])
+wald.test(coef=fullmod.compdata$coefficients[chemo.varlist[2:5]],Sigma=fullmod.compdata$var[chemo.varlist[2:5],chemo.varlist[2:5]])
+wald.test(coef=fullmod.compdata$coefficients[logpgr.varlist[2:5]],Sigma=fullmod.compdata$var[logpgr.varlist[2:5],logpgr.varlist[2:5]])
+
+```
+
+#-------------------------------------------
+#-------------------------------------------
+#MODEL SELECTION PROCEDURE
+#-------------------------------------------
+#-------------------------------------------
+
+```{r}
+
+#-------------------------------------------
+#STEP 1
+#-------------------------------------------
+
+formula.base=paste0("Surv(tstart,t,d)~",paste0(variable.list,collapse="+"))
+
+vars.remaining=c("age","sized1","sized2","grade","enodessq","hormon","chemo","logpgr")
+
+source("model_selection_procedure.R")
+compdata.res
+compdata.stat.res
+
+#selected covariate: grade
+#form for TVE: spline with 5 knots
+```
+
+```{r}
+#-------------------------------------------
+#STEP 2
+#-------------------------------------------
+
+formula.base=paste0("Surv(tstart,t,d)~",paste0(variable.list,collapse="+"),"+grade:t+grade:t.k5.1+grade:t.k5.2+grade:t.k5.3")
+
+vars.remaining=c("age","sized1","sized2","enodessq","hormon","chemo","logpgr")
+
+source("model_selection_procedure.R")
+compdata.res
+compdata.stat.res
+
+#selected covariate: enodessq
+#form for TVE: spline with 5 knots
+```
+
+```{r}
+#-------------------------------------------
+#STEP 3
+#-------------------------------------------
+
+formula.base=paste0("Surv(tstart,t,d)~",paste0(variable.list,collapse="+"),"+grade:t+grade:t.k5.1+grade:t.k5.2+grade:t.k5.3+
+                    enodessq:t+enodessq:t.k5.1+enodessq:t.k5.2+enodessq:t.k5.3")
+
+vars.remaining=c("age","sized1","sized2","hormon","chemo","logpgr")
+
+source("model_selection_procedure.R")
+compdata.res
+compdata.stat.res
+
+#selected covariate: age
+#form for TVE: spline with 5 knots
+
+```
+
+```{r}
+#-------------------------------------------
+#STEP 4
+#-------------------------------------------
+
+formula.base=paste0("Surv(tstart,t,d)~",paste0(variable.list,collapse="+"),"+grade:t+grade:t.k5.1+grade:t.k5.2+grade:t.k5.3+
+                    enodessq:t+enodessq:t.k5.1+enodessq:t.k5.2+enodessq:t.k5.3+
+                    age:t+age:t.k5.1+age:t.k5.2+age:t.k5.3")
+
+vars.remaining=c("sized1","sized2","hormon","chemo","logpgr")
+
+source("model_selection_procedure.R")
+compdata.res
+compdata.stat.res
+
+#selected covariate: chemo
+#form for TVE: spline with 5 knots
+
+```
+
+```{r}
+#-------------------------------------------
+#STEP 5
+#-------------------------------------------
+
+formula.base=paste0("Surv(tstart,t,d)~",paste0(variable.list,collapse="+"),"+grade:t+grade:t.k5.1+grade:t.k5.2+grade:t.k5.3+
+                    enodessq:t+enodessq:t.k5.1+enodessq:t.k5.2+enodessq:t.k5.3+
+                    age:t+age:t.k5.1+age:t.k5.2+age:t.k5.3+
+                    chemo:t+chemo:t.k5.1+chemo:t.k5.2+chemo:t.k5.3")
+
+vars.remaining=c("sized1","sized2","hormon","logpgr")
+
+source("model_selection_procedure.R")
+compdata.res
+compdata.stat.res
+
+#selected covariate: sized1
+#form for TVE: linear in t
+
+```
+```{r}
+#-------------------------------------------
+#STEP 6
+#-------------------------------------------
+
+formula.base=paste0("Surv(tstart,t,d)~",paste0(variable.list,collapse="+"),"+grade:t+grade:t.k5.1+grade:t.k5.2+grade:t.k5.3+
+                    enodessq:t+enodessq:t.k5.1+enodessq:t.k5.2+enodessq:t.k5.3+
+                    age:t+age:t.k5.1+age:t.k5.2+age:t.k5.3+
+                    chemo:t+chemo:t.k5.1+chemo:t.k5.2+chemo:t.k5.3+
+                    sized1:t")
+
+vars.remaining=c("sized2","hormon","logpgr")
+
+source("model_selection_procedure.R")
+compdata.res
+compdata.stat.res
+
+#STOP: no remaining p<0.05
+
+#FINAL MODEL TVES: 
+#grade (spline with 5 knots)
+#enodessq (spline with 5 knots)
+#age (spline with 5 knots)
+#chemo (spline with 5 knots)
+#sized1 (linear in t)
+```
+
+
+
