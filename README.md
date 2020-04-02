@@ -2,7 +2,8 @@
 Multiple imputation in Cox regression when there are time-varying effects of exposures
 
 The file generate_data.R simulates time-to-event data with time-varying effects of covariates, as described in the paper:
-Keogh RH, Morris TP. Multiple imputation in Cox regression when there are time-varying effects of exposures. https://arxiv.org/abs/1706.09187
+Keogh RH, Morris TP. Multiple imputation in Cox regression when there are time-varying effects of covariates. Statistics in Medicine 2018;37:3661-3678. https://onlinelibrary.wiley.com/doi/full/10.1002/sim.7842
+https://arxiv.org/abs/1706.09187
 
 The file smcfcs_tvev3_18062018.R provides the code for the MI-TVE-SMC methods described in the paper, and is modified from Jonathan Bartlett's 'smcfcs' R package (https://github.com/jwb133/smcfcs, and also available on CRAN).
 
